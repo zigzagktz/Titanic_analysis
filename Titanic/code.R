@@ -29,8 +29,6 @@ for (i in c(1:nrow(df))) { a[i] <- lastname[[i]][2]}
 b <- strsplit(a[1:nrow(df)],". ")
 for (i in c(1:nrow(df))) { title[i] <- b[[i]][1]}
 
-##mostly fare are from 5 to 15
-ggplot(df,aes(Fare,color=I("red"),fill=I("green"),alpha=I(0.3))) + geom_histogram(binwidth = 1) + xlim(NA,50)
 
 ##cange factor to character
 df$Embarked <- as.character(df$Embarked)
@@ -78,6 +76,7 @@ percent_survive_by_class <- df %>% group_by(Pclass) %>% summarise(survival_rate=
 percent_survive_by_class
 
 #sruvival vs fare
+
 barplot(df$Fare)
 #I see a few outliers
 fare <- sort(df$Fare,decreasing = T)
@@ -86,13 +85,19 @@ top_fare <- tail(order(df$Fare),3)
 df[top_fare,]
 #all 3 with highest fare survived.
 
-##we see that higher the fair higher the survival
-ggplot(df,aes(x=Fare,fill=factor(Survived))) + geom_histogram()+ xlim(0,100)
 
 fare <- fare[-c(1,2,3)]
 head(fare)
 summary(fare)
 ##now the mean has moved down
+
+##mostly fare are from 5 to 15
+ggplot(df,aes(Fare,color=I("red"),fill=I("green"),alpha=I(0.3))) + geom_histogram(binwidth = 1) + xlim(NA,50)
+
+
+##we see that higher the fair higher the survival
+ggplot(df,aes(x=Fare,fill=factor(Survived))) + geom_histogram()+ xlim(0,100)
+
 ##~~~~
 
 ## survival vs title
@@ -112,4 +117,15 @@ table(df$title)
 ggplot(df,aes(x=title,fill=factor(Survived))) + geom_bar()
 ##~~~~~~~~~
 
-##
+## survival vs embarked
+ggplot(df,aes(x=Embarked,fill=factor(Survived))) + geom_histogram(stat="count")
+aggregate(df$Survived,by=list(df$Embarked),FUN=mean)
+## there is sufficient difference in percentage, so we can use this also for prediction
+
+## survival vs age
+ggplot(df,aes(x=Age)) + geom_density(col="green",fill="red",alpha=.4,size=1)
+## see they are mostly middle age people 
+## this can also be used for prediction
+
+
+
