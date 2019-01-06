@@ -100,13 +100,18 @@ ggplot(percent2,aes(x=Parch,y=survival_rate2,col=I("red"))) + geom_line()
 
 ##but combining them will increase the accuracy a little bit.
 family_size <- df$SibSp + df$Parch + 1
-df <- cbind(df,family)
+df <- cbind(df,family_size)
+
 ggplot(df,aes(x=family,fill=factor(Survived))) + geom_histogram(stat = "count")
 percent3 <- df %>% group_by(family) %>% summarise(lived=sum(Survived==1),died= sum(Survived==0))
 survival_rate3 <- (percent3$lived)*100/(percent3$lived + percent3$died )
 percent3 <- cbind(percent3,survival_rate3)
 percent3
 ggplot(percent3,aes(x=family,y=survival_rate3,col=I("red"))) + geom_line()
+
+##family size for test
+family_size <- test$SibSp + test$Parch + 1
+test <- cbind(test,family_size)
 
 ##combining 3 of them
 dummy <- cbind(percent[,c(1,4)],percent2[,c(1,4)], percent3[,c(1,4)])
@@ -160,6 +165,10 @@ survival_by_title <- df %>% group_by(title) %>% summarise(value=mean(Survived)*1
 df$title[df$title!="Master" & df$title != "Miss" & df$title!= "Mr" & df$title!= "Mrs"] <- "Other"
 table(df$title)
 ggplot(df,aes(x=title,fill=factor(Survived))) + geom_bar()
+
+##change title for test also
+test$title[test$title!="Master" & test$title != "Miss" & test$title!= "Mr" & test$title!= "Mrs"] <- "Other"
+
 ##~~~~~~~~~
 
 ## survival vs embarked
@@ -171,14 +180,33 @@ aggregate(df$Survived,by=list(df$Embarked),FUN=mean)
 ggplot(df,aes(x=Age)) + geom_density(col="green",fill="red",alpha=.4,size=1)
 ## see they are mostly middle age people
 ## as the age increased the survival also increased
+ggplot(df,aes(x=Age,fill=factor(Survived))) + geom_histogram(binwidth = 10)
 ## this can also be used for prediction
 
 
 ##sex vs survival 
 ggplot(df,aes(x=Sex,fill=factor(Survived))) + geom_histogram(stat="count")
-## Women had higeher survival rate
+## Women had higher survival rate
 
 ##normalize continous variables
+norm <- function(x){(x-min(x))/(max(x)-min(x))}
 
-##change eveything to factor
+df$Age<- norm(df$Age)
+df$Fare<-  norm(df$Fare)
+test$Age<-  norm(test$Age)
+test$Fare <- norm(test$Fare)
 
+##subset only valuebale columns
+train <- df[,c(1,2,4,5,9,10,11,12)]
+test <- test[,c(1,2,4,5,9,10,11,12)]
+
+
+train$Pclass <- as.factor(train$Pclass)
+train$title<- as.factor(train$title)
+test$Pclass <- as.factor(test$Pclass)
+test$title<- as.factor(test$title)
+
+ramfor <- randomForest( factor(Survived) ~ Pclass + Sex + Age + Fare + Embarked + title + family_size, data = train)
+ramfor
+varImpPlot(ramfor)
+pr <- predict(ramfor,test)
