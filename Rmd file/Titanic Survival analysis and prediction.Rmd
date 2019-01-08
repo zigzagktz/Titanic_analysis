@@ -1,0 +1,479 @@
+---
+title: "Titanic Forever (Prediction Model for Survival with 84% accuracy)"
+author: "Kshitiz Sirohi"
+date: "January 7, 2019"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Introduction
+Titanic dataset is famous for building a prediction model; whosoever have started his/her journey into the field of Machine Learning would know that. The dataset has 1309 observations and 12 variables. The predciton that has to be made is that "given certain set of variables, predict that a pessanger would have survived or died". Since we can only have two value as output, this is a classification problem. Let's get started.
+
+##Loading packages
+```{r}
+library(ggplot2)
+library(dplyr)
+library(randomForest)
+```
+##Loading Data
+```{r}
+setwd("C:/Users/ksiro/Documents/")
+t<- read.csv("train.csv",sep=",",header=TRUE)
+
+te <- read.csv("test.csv",sep=",",header=TRUE)
+te$Survived <- NA
+df<-rbind(t,te)
+df <- as.data.frame(df)
+```
+
+##Understanding Data
+
+This is how it looks after we load the data and combine them by rows.
+```{r}
+summary(df)
+```
+This is how top 6 values looks like in "df" data frame
+```{r}
+head(df)
+```
+This is how last 6 values looks like in "df" data frame
+```{r}
+tail(df)
+```
+
+
+
+
+
+If we check the 11th column , we can see that there are a lot of missing values. So it makes sense to remove the whole column. So, after removing the 11th coulmn we can see down below how many missing values each coulmn in the table have.
+```{r}
+df <- df[,-11] ##removing the 11th column
+
+m <- as.data.frame(matrix(ncol=1,nrow=1))   ##creating an empty data frame
+for (i in c(1:11)) { m[i]<- sum(is.na(df[,i])) }   ## storting the values of number of missing values in data frame
+m
+```
+
+Since we know how many NAs we have in each column, we now need to impute those which actual values. In the summary below, we can check the mean, median, min ,max of Age variable.
+```{r}
+summary(df$Age)
+```
+After imputing we can see the change below.
+```{r}
+
+df[which(is.na(df$Age)),6] <- mean(df$Age,na.rm=TRUE)
+summary(df$Age)
+```
+
+**Observation**
+
+* column 6 has 263 NAs, so we need to impute some value. It can be mode, median or mean depending upon the situation. In our case, I have imputed mean because the mode and median are almost similar so it did not matter which one I use. 
+
+* Column 2 also have 418 NAs but that is what we have to predict, so we do not bother filling it in.
+
+*  I removed the cabin column since it had so many missing values.
+
+
+____________________________________________________________________
+
+Let's also impute values in Fare variable. 
+We can see the summary of fare down below. It has one NA, so after finding the index of that NA I have imputed the value.
+```{r}
+summary(df$Fare)
+which(is.na(df$Fare)) ## indexes are
+df$Fare[1044] <- median(df$Fare,na.rm=TRUE)
+```
+
+The reason to impute median is that the variable fare has some outliers which is skweing the mean value higher than median, which mean mean does not represent the actual picture.
+
+____________________________________________________________________
+
+Imputing values in Embarked variable.
+We can see down below that one element in embarked variables is empty space. So, I have found out the index of it, that is 62 and 830 and imputed the values.
+
+```{r}
+table(df$Embarked)            
+which(df$Embarked=="")
+df$Embarked[c(62,830)] <- "S"
+df$Embarked <- droplevels(df$Embarked)
+table(df$Embarked)
+```
+* Above we can see that most of the time the embarked had value "S", that is why it makes sense to impute "S" in empty spaces whose index number we got from "which" function and used it to impute value.
+* We also had to drop the empty level, since it was a factor we only need those factor that hold some value.
+
+____________________________________________________________________
+
+
+
+We do not need passenger ID for the prediciton of survival because unique ID cannot help in prediction.
+
+```{r}
+##drop pasenger id
+df <- df[,-1]
+```
+
+____________________________________________________________________
+
+
+
+In name column we are given full names of the passenger, I have taken out only the title of their name so that we can predict does having a higher title or lower title had any effect on the survival. Maybe higher title are given higher prefference than people that hae lower title. Take a look down below how many different titles we have.
+
+```{r}
+##seprating title out of names in training
+df$Name <- as.character(df$Name)
+lastname <- strsplit(df$Name,",")
+a <- data.frame(matrix(nrow=1,ncol=1))
+a<-as.list(a)
+for (i in c(1:nrow(df))) { a[i] <- lastname[[i]][2]}
+a<-as.character(a)
+b <- strsplit(a[1:nrow(df)],". ")
+title <- data.frame(matrix(ncol=1,nrow=1))
+for (i in c(1:nrow(df))) { title [i] <- b[[i]][1]}
+title <- trimws(title)
+title <- as.data.frame(title)
+df <- cbind(df,title)
+df$title <- as.character(df$title)
+table(df$title)
+```
+
+
+
+____________________________________________________________________
+
+##Data Splitting
+
+Now we are in the stage where have cleared the data. Now we can split them back into training and testing.
+I split the data in two parts, one part is "df" again, which holds training values, and another is "test" which holds test values.
+
+```{r}
+test <- df[892: 1309,]
+df <- df[1:891,] ## I am strong training as df again
+```
+____________________________________________________________________
+
+
+##Exploration
+
+
+**Pclass vs survival**
+  
+  Let's check out how does class variable affects the survival of the passenger. 
+```{r}
+##most number of 3rd class passengers, almost half
+aggregate(df$Survived,by=list(df$Pclass),FUN=mean) ##variying survival rate depending upon the class
+ggplot(df,aes(x=Pclass,fill=factor(Survived))) + geom_histogram(stat="count")
+```
+**Observations**
+
+* Above we see that most of the passenger are from 3rd class category on ship.
+* In the plot we can see the survival rate of each one of those classes.
+
+
+Also check out the pecentage of people survived in each category below. 
+```{r}
+#we see that people with high class had better chances of survival.
+percent_survive_by_class <- df %>% group_by(Pclass) %>% summarise(survival_rate=sum(Survived==1)*100/ (survival_rate= sum(Survived ==1)+sum(Survived==0)) )
+percent_survive_by_class
+```
+**Observations**
+
+* We see that people from 1st class have higher rate of survival than people from 3rd class.
+
+____________________________________________________________________
+
+**Fare vs Survival**
+
+Let's check how the fare variable affects the survival of passenger.
+
+Here is the simple barplot of fare.
+```{r}
+#sruvival vs fare
+barplot(df$Fare)
+```
+I see a few outliers up there. Let's see the top 6 of those outliers below.
+```{r}
+fare <- sort(df$Fare,decreasing = T)
+head(fare)
+top_fare <- tail(order(df$Fare),3)
+df[top_fare,]
+#all 3 with highest fare survived.
+```
+**Observations**
+
+* I saw that there are few outliers in fare column.  In the barplot above it can bee seen that three are above 500 and their are more that are higher than 200 but their quantity is very less in comparision to the whole dataset.
+
+* Above we can also see that all 3 passengers who paid 500 bucks have survived.
+
+
+Let's analyse more on fare.
+```{r}
+fare <- fare[-c(1,2,3)]
+head(fare)
+summary(fare)
+
+ggplot(df,aes(Fare,color=I("red"),fill=I("green"),alpha=I(0.3))) + geom_histogram(binwidth = 1) + xlim(NA,50)
+
+ggplot(df,aes(x=Fare,fill=factor(Survived))) + geom_histogram()+ xlim(0,100)
+```
+**Observations**
+  
+  * After removing the top three outliers, we can see that the mean value has changed. Not a very significant improvement but in some cases it can be significant.
+
+* In the one of the histogram above we can see that the most of the people paid between 5 to 30.
+
+* In the second chart above, we can see that higher the fare amount higher is the sruvival. That means people who paid maore were given more preference during emergency.
+
+
+____________________________________________________________________
+
+
+
+**Survival vs class**
+  
+  ```{r}
+ggplot(df,aes(x=Pclass,fill=factor(Survived))) + geom_bar()
+percent_survive_by_class <- df %>% group_by(Pclass) %>% summarise(survival_rate=sum(Survived==1)*100/ (survival_rate= sum(Survived ==1)+sum(Survived==0)) )
+percent_survive_by_class
+```
+**Observations** 
+  
+  * We see that people from 1st class have higher rate of survival than people from 3rd class.
+
+
+
+____________________________________________________________________
+
+
+**Survival vs Embarked**
+  ```{r}
+ggplot(df,aes(x=Embarked,fill=factor(Survived))) + geom_histogram(stat="count")
+aggregate(df$Survived,by=list(df$Embarked),FUN=mean)
+## there is sufficient difference in percentage, so we can use this also for prediction
+```
+**Observations**
+  
+  * In the table above we can see that only C has 55% survival rate. Which can also be seen in the graph given after the table above.
+
+
+____________________________________________________________________
+
+
+**survival vs age**
+  Let's see how does differece in age can make a difference in the survival of a passenger.
+```{r}
+ggplot(df,aes(x=Age)) + geom_density(col="green",fill="red",alpha=.4,size=1)
+ggplot(df,aes(x=Age,fill=factor(Survived))) + geom_histogram(binwidth = 10)
+```
+**Observations**
+
+* Most number of people on the ship was around 30 years of age. It can be seen in the plot above. There is a sudden spike in the density plot at age 30.
+* In the next plot we can see that as the age increased the survival rate also increassed. Meaning people that were either old or child, were given more preferences than middle age people during emergency.
+
+
+____________________________________________________________________
+
+
+**Sex vs survival**
+```{r}
+ggplot(df,aes(x=Sex,fill=factor(Survived))) + geom_histogram(stat="count")
+## Women had higher survival rate
+```
+**Observations**
+
+In the plot above we can see that women had higher survival rate, meaning women were given preference during emergency.
+
+
+____________________________________________________________________
+
+
+**SibSp vs Survival**
+
+Can having more number of siblings effects the chances of survival?
+```{r}
+ggplot(df,aes(x=SibSp,fill=factor(Survived))) + geom_bar(binwidth = .5)
+##SURVIAL RATE DECREASSED AS THE RESPONSIBILITY INCREASED.
+percent <- df %>% group_by(SibSp) %>% summarise(lived=sum(Survived==1),died= sum(Survived==0))
+survival_rate <- (percent$lived)*100/(percent$lived + percent$died )
+percent <- cbind(percent,survival_rate)
+percent
+ggplot(percent,aes(x=SibSp,y=survival_rate,col=I("red"))) + geom_line()
+```
+**Observations**
+
+* In percent table we can see that the survival rate is decreasing as the responsibility increase, by reponsibility I mean as the number of Siblings increased, in addition to spouses, the survival rate decreased.
+
+
+
+____________________________________________________________________
+
+
+**Parch vs Survival**
+
+Can having more number of parents or chnidern means they had more reponsibility and less chances of survival.
+```{r}
+#having a parent or chind does not seem to efect the survial.
+ggplot(df,aes(x=Parch,fill=factor(Survived))) + geom_bar(binwidth = .5)
+percent2 <- df %>% group_by(Parch) %>% summarise(lived=sum(Survived==1),died= sum(Survived==0))
+survival_rate2 <- (percent2$lived)*100/(percent2$lived + percent2$died )
+percent2 <- cbind(percent2,survival_rate2)
+percent2
+ggplot(percent2,aes(x=Parch,y=survival_rate2,col=I("red"))) + geom_line()
+```
+**Observations**
+
+* In the percent2 table above, we can see that there is not much variation in surivival rate depending upon the number of parent or child that individual have.
+* But, we can get a more clear picture if we combine SibSp and Parch and name it the whole family size. So let us do that.
+
+____________________________________________________________________
+
+
+##Introducing New Feature
+
+**Family size**
+
+Let's create a new varibale called family size based on previous varibales.
+```{r}
+family_size <- df$SibSp + df$Parch + 1      ##family size for training
+df <- cbind(df,family_size)
+
+family_size <- test$SibSp + test$Parch + 1    ##family size for test
+test <- cbind(test,family_size)
+```
+**Observations**
+  
+  I have added the number of sibling and spouse to number of parents and chinlders and 1 for the person itself. This can be a new feature called family.
+
+
+Creating the varibale for testing dataset too.
+```{r}
+##family size for training set
+ggplot(df,aes(x=family_size,fill=factor(Survived))) + geom_bar(stat = "count")
+percent3 <- df %>% group_by(family_size) %>% summarise(lived=sum(Survived==1),died= sum(Survived==0))
+survival_rate3 <- (percent3$lived)*100/(percent3$lived + percent3$died )
+percent3 <- cbind(percent3,survival_rate3)
+percent3
+ggplot(percent3,aes(x=family_size,y=survival_rate3,col=I("red"))) + geom_line()
+```
+**Observations**
+  * After calculating the total family size, I have shown the survival rate in with respect to each category of family size.
+* In second chart I have shown the trend of survival rate based on the percentage of people survived belonging to each category. 
+
+
+
+Now to compare them all I have created a combined chart down below.
+* (a) percent line chart that showed SibSp
+* (b) percent2 line chart that showed Parch
+* (c) percent3 line chart that showed SibSp + Parch + 1
+
+```{r}
+empty1 <- data.frame(matrix(c(0,0,0,0,0,0,0,0),nrow=2,ncol=4))
+empty2 <- data.frame(matrix(c(0,0,0,0,0,0,0,0),nrow=2,ncol=4))
+colnames(empty1) <- c("SibSp", "lived", "died","survival_rate")
+colnames(empty2) <- c("Parch", "lived", "died","survival_rate2")
+percent <- rbind(percent,empty1)
+percent2 <- rbind(percent2,empty2)
+dummy <- cbind(percent[,c(1,4)],percent2[,c(1,4)], percent3[,c(1,4)])
+g <- ggplot(dummy,aes(x=family_size,y=survival_rate3,color=I("red"),group=2)) + geom_line() ## after adding family
+g <- g + geom_line(aes(x=family_size,y=survival_rate2,color="green")) + geom_point(shape=16)## only parent and child
+g <- g + geom_line(aes(x=family_size,y=survival_rate,color="blue")) + geom_line() ## only spouse and siblings
+g
+```
+
+
+
+____________________________________________________________________
+
+
+
+##Changing features
+
+Below we can see that there are too many titles. So it is better to merge some of them.
+```{r}
+## survival vs title
+table(df$title) 
+```
+Let's see how much percentage of people survived in each category of title.
+```{r}
+survival_by_title <- df %>% group_by(title) %>% summarise(value=mean(Survived)*100)
+survival_by_title
+```
+Below is the visulization of title vs surivavl after merging the less frequent titles.
+```{r}
+df$title[df$title!="Master" & df$title != "Miss" & df$title!= "Mr" & df$title!= "Mrs"] <- "Other"
+table(df$title)
+ggplot(df,aes(x=title,fill=factor(Survived))) + geom_bar()
+```
+
+Change title for test also.
+```{r}
+test$title[test$title!="Master" & test$title != "Miss" & test$title!= "Mr" & test$title!= "Mrs"] <- "Other"
+```
+**Observations**
+
+* I have cahnged the feature named title. We can see that there are many different kind of title, then it makes sense to combine the less frequent ones together and let the more frequent ones as they are.
+* Then in the table we can see the title as well as their respective survival rate. We see that Womens are given most preference during emergency with Miss having 70% survival and Mrs having 80% survival rate.
+* Men with the tiel Mr., meaning an average man on the ship was given least preference.
+* We can also see it in the barplot above, where each title being presented with respective survival rate in blue. 
+* Changing the title for test dataset also because the traning and testing dataset must have the consistency.
+
+
+____________________________________________________________________
+
+
+##Normalization
+
+In classification problem, we need to normalize the countinous result so that we can accomodate those continous variables between 0 and 1. To do that, I have created a function called norm and then called fare and age varible because they were continous. Both for testing and training dataset.
+
+```{r}
+##normalize continous variables
+norm <- function(x){(x-min(x))/(max(x)-min(x))}
+
+df$Age<- norm(df$Age)
+df$Fare<-  norm(df$Fare)
+test$Age<-  norm(test$Age)
+test$Fare <- norm(test$Fare)
+
+##subset only valuebale columns
+train <- df[,c(1,2,4,5,9,10,11,12)]
+test <- test[,c(1,2,4,5,9,10,11,12)]
+```
+____________________________________________________________________
+
+Since we know we have a classification probelem at hand, it is reasonable to convert evething into factor. Both for training and testing dataset.
+
+```{r}
+train$Pclass <- as.factor(train$Pclass)
+train$title<- as.factor(train$title)
+train$Embarked <- as.factor(df$Embarked)
+test$Pclass <- as.factor(test$Pclass)
+test$title<- as.factor(test$title)
+```
+
+____________________________________________________________________
+
+##Prediction
+
+Use the random forest.
+```{r}
+ramfor <- randomForest( factor(Survived) ~ Pclass + Sex + Age + Fare + Embarked + title + family_size, data = train)
+ramfor
+varImpPlot(ramfor)
+pr <- predict(ramfor,test)
+```
+
+____________________________________________________________________
+
+By creating the confusion matrix we can determine how many false positive and false negative we have. Moreover, we can also check the accuracy of the result.
+
+```{r}
+confusion_matrix <- ramfor[5]
+confusion_matrix <- as.data.frame(confusion_matrix)
+Accuracy <- (confusion_matrix[1,1] + confusion_matrix[2,2] )/(confusion_matrix[1,2]+confusion_matrix[2,2] +confusion_matrix[2,1] +confusion_matrix[1,1]  )
+Accuracy <- round(Accuracy,2)
+print(paste("Accuracy is", Accuracy*100,"%"))
+```
